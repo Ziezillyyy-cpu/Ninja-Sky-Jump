@@ -1,0 +1,48 @@
+NINJA SKY JUMP - Update sesuai Review Dosen (8 Juli 2026)
+===========================================================
+
+CARA MENJALANKAN
+1. Pastikan JDK sudah terinstal (bukan cuma JRE) dan `javac` ada di PATH.
+2. Double click run.bat (Windows) -> otomatis compile ke folder bin/ lalu langsung jalan.
+   Kalau pakai IntelliJ: buka folder ini sebagai project, lalu run game/Main.java.
+
+APA YANG DITAMBAHKAN / DIPERBAIKI
+1. Layar Menu Utama (baru total):
+   - Kolom input nama pemain
+   - Kotak High Score (skor tertinggi + nama pemegangnya), otomatis tersimpan
+     ke file "highscore.dat" di folder project, jadi tetap ada walau app ditutup
+   - Tombol "OK - MULAI" untuk mulai main (bisa juga tekan ENTER di kolom nama)
+
+2. HUD dalam game:
+   - Nyawa (3 hati) ditampilkan DI ATAS Skor, sesuai revisi
+   - Waktu bermain (format mm:ss) berjalan real-time
+   - Info Score, Difficulty, dan info struktur data (LinkedList/Queue) tetap ada
+     untuk keperluan presentasi SDAT
+
+3. Tombol Pause/Back saat bermain:
+   - Tombol kecil (❚❚) di pojok kanan atas layar saat bermain
+   - Bisa juga tekan ESC
+   - Saat pause muncul overlay dengan 2 tombol: "LANJUTKAN" dan "MENU UTAMA"
+
+4. Layar Game Over (diperbarui):
+   - Menampilkan skor akhir, waktu bermain, dan status High Score baru (jika ada)
+   - Tombol "MAIN LAGI" (restart langsung) dan "MENU UTAMA" (kembali ke menu awal)
+
+5. Sistem Nyawa (baru):
+   - Pemain dapat 3 nyawa. Kalau jatuh, nyawa berkurang 1 dan ninja respawn
+     di tengah layar (tidak langsung Game Over)
+   - Game Over baru terjadi kalau nyawa habis (0)
+
+FILE BARU YANG DITAMBAHKAN
+- RoundedButton.java      -> tombol custom bergaya rounded (dipakai di semua tombol)
+- RoundedTextField.java   -> kolom input nama custom bergaya rounded
+- HighScoreManager.java   -> baca/simpan high score ke file highscore.dat
+
+FILE YANG DIROMBAK
+- GamePanel.java -> ditambah state Menu/Playing/Paused/GameOver, nyawa, waktu,
+  dan semua tombol di atas. Logika inti (LinkedList platform, Queue pola platform,
+  Tree kesulitan/Pre-Order Traversal) TIDAK diubah sama sekali, supaya struktur
+  data untuk tugas SDAT kamu tetap utuh.
+
+TIDAK DIUBAH
+- Ninja.java, Platform.java, DifficultyNode.java, DifficultyTree.java, Main.java
