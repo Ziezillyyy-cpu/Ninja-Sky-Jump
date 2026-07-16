@@ -56,7 +56,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     // Data pemain & high score
     private String playerName = "Ninja";
     private HighScoreManager.HighScoreData highScore;
-
+    private java.awt.Image customBgImage;
     // ==========================================
     // INTEGRASI STRUKTUR DATA
     // ==========================================
@@ -89,6 +89,11 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         random = new Random();
 
         highScore = HighScoreManager.load();
+        try {
+            customBgImage = new javax.swing.ImageIcon(getClass().getResource("resources/ninja_bg.png")).getImage();
+        } catch (Exception e) {
+            System.out.println("[ERROR]: Gagal memuat gambar latar belakang! " + e.getMessage());
+        }
 
         buildMenuUI();
         buildInGameUI();
@@ -423,34 +428,30 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     }
 
     private void drawDynamicBackground(Graphics2D g2d) {
-        Color topColor;
-        Color bottomColor;
-
-        int refScore = (state == State.MENU) ? 0 : score;
-
-        if (refScore < 15) {
-            topColor = new Color(135, 206, 250);
-            bottomColor = new Color(70, 130, 180);
-        } else if (refScore < 35) {
-            topColor = new Color(25, 25, 112);
-            bottomColor = new Color(186, 85, 211);
+        // Menggunakan gambar kustom jika berhasil di-load
+        if (customBgImage != null) {
+            g2d.drawImage(customBgImage, 0, 0, WIDTH, HEIGHT, this);
         } else {
-            topColor = new Color(10, 10, 25);
-            bottomColor = new Color(40, 20, 60);
-        }
+            // Fallback bawaan jika gambar tidak ditemukan
+            Color topColor;
+            Color bottomColor;
 
-        GradientPaint gp = new GradientPaint(0, 0, topColor, 0, HEIGHT, bottomColor);
-        g2d.setPaint(gp);
-        g2d.fillRect(0, 0, WIDTH, HEIGHT);
+            int refScore = (state == State.MENU) ? 0 : score;
 
-        if (refScore >= 15 || state == State.MENU) {
-            g2d.setColor(new Color(255, 255, 255, 180));
-            for (int i = 0; i < 25; i++) {
-                int starX = (i * 31) % WIDTH;
-                int starY = (i * 47) % HEIGHT;
-                int size = (i % 3 == 0) ? 3 : 2;
-                g2d.fillOval(starX, starY, size, size);
+            if (refScore < 15) {
+                topColor = new Color(135, 206, 250);
+                bottomColor = new Color(70, 130, 180);
+            } else if (refScore < 35) {
+                topColor = new Color(25, 25, 112);
+                bottomColor = new Color(186, 85, 211);
+            } else {
+                topColor = new Color(10, 10, 25);
+                bottomColor = new Color(40, 20, 60);
             }
+
+            GradientPaint gp = new GradientPaint(0, 0, topColor, 0, HEIGHT, bottomColor);
+            g2d.setPaint(gp);
+            g2d.fillRect(0, 0, WIDTH, HEIGHT);
         }
     }
 
