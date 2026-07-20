@@ -19,17 +19,14 @@ import java.awt.event.KeyListener;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Random;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
 
 /**
  * Kelas GamePanel.java
  * Merupakan area game loop utama yang menangani rendering, pembaruan logika,
  * input keyboard/mouse pemain, serta pengintegrasian seluruh struktur data.
- *
- * REVISI SDAT - 8 Juli 2026:
- *  - Layar Menu Utama: input nama pemain, tampilan High Score, tombol OK untuk mulai
- *  - HUD dalam game: Nyawa (di atas Skor) dan Waktu bermain
- *  - Tombol Pause ("Back/Stop") saat bermain -> Resume / Kembali ke Menu
- *  - Layar Game Over: tombol Main Lagi dan Kembali ke Menu
  */
 public class GamePanel extends JPanel implements ActionListener, KeyListener {
     public static final int WIDTH = 600;
@@ -53,14 +50,19 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private long pausedAccumMillis;
     private long pauseStartMillis;
 
+    // Posisi pergeseran latar belakang (Scrolling Background)
+    private double bgOffsetY = 0;
+
     // Data pemain & high score
     private String playerName = "Ninja";
     private HighScoreManager.HighScoreData highScore;
     private java.awt.Image customBgImage;
+    private java.awt.Image topBgImage;
+    private java.awt.Image skyBgImage;
+    private Clip backgroundMusic;
     // ==========================================
     // INTEGRASI STRUKTUR DATA
     // ==========================================
-
     private LinkedList<Platform> activePlatforms;
     private Queue<String> platformPatternQueue;
     private DifficultyTree difficultyTree;
@@ -72,7 +74,6 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     // ==========================================
     // KOMPONEN UI (Menu, Pause, Game Over)
     // ==========================================
-
     private RoundedTextField nameField;
     private RoundedButton okButton;
     private RoundedButton pauseButton;
@@ -81,16 +82,18 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private RoundedButton restartButton;
     private RoundedButton menuFromGameOverButton;
 
+
     public GamePanel() {
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
         setFocusable(true);
         setLayout(null);
         addKeyListener(this);
         random = new Random();
-
         highScore = HighScoreManager.load();
         try {
             customBgImage = new javax.swing.ImageIcon(getClass().getResource("resources/ninja_bg.png")).getImage();
+            topBgImage = new javax.swing.ImageIcon(getClass().getResource("resources/ninja_bg_2.png")).getImage();
+            skyBgImage = new javax.swing.ImageIcon(getClass().getResource("resources/ninja_bg_3.png")).getImage();
         } catch (Exception e) {
             System.out.println("[ERROR]: Gagal memuat gambar latar belakang! " + e.getMessage());
         }
@@ -108,14 +111,13 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     }
 
     // ==========================================
-    // PEMBANGUNAN KOMPONEN UI
+    // PEMBANGUNAN KOMKOMPONEN UI
     // ==========================================
-
     private void buildMenuUI() {
         nameField = new RoundedTextField(16);
         nameField.setBounds(WIDTH / 2 - 130, 358, 260, 46);
         nameField.setText(playerName);
-        nameField.addActionListener(e -> startGame()); // tekan ENTER langsung mulai
+        nameField.addActionListener(e -> startGame());
         add(nameField);
 
         okButton = new RoundedButton("OK - MULAI", new Color(46, 160, 90), new Color(60, 200, 115), Color.WHITE);
@@ -156,16 +158,12 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         add(menuFromGameOverButton);
     }
 
-    /** Menampilkan/menyembunyikan komponen sesuai state saat ini */
     private void applyVisibilityForState() {
         nameField.setVisible(state == State.MENU);
         okButton.setVisible(state == State.MENU);
-
         pauseButton.setVisible(state == State.PLAYING);
-
         resumeButton.setVisible(state == State.PAUSED);
         menuFromPauseButton.setVisible(state == State.PAUSED);
-
         restartButton.setVisible(state == State.GAME_OVER);
         menuFromGameOverButton.setVisible(state == State.GAME_OVER);
     }
@@ -173,14 +171,12 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     // ==========================================
     // TRANSISI STATE
     // ==========================================
-
     private void startGame() {
         String typed = nameField.getText().trim();
         playerName = typed.isEmpty() ? "Ninja" : typed;
-
         restartGame();
-
         state = State.PLAYING;
+        playBGM();
         applyVisibilityForState();
         requestFocusInWindow();
     }
@@ -209,80 +205,77 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
     private void triggerGameOver() {
         state = State.GAME_OVER;
+
+        stopBGM();
         isNewHighScore = score > highScore.score;
         if (isNewHighScore) {
             highScore = new HighScoreManager.HighScoreData(score, playerName);
             HighScoreManager.save(highScore);
         }
         applyVisibilityForState();
-        System.out.println("--- GAME OVER! Skor Akhir: " + score + " ---");
     }
-
     public void restartGame() {
-        ninja = new Ninja(180, 400, 70);
+        ninja = new Ninja(180, 700, 70); // Y diset di 700
         score = 0;
         lives = MAX_LIVES;
         keyLeft = false;
         keyRight = false;
         isNewHighScore = false;
-
         gameStartMillis = System.currentTimeMillis();
         pausedAccumMillis = 0;
 
-        activePlatforms = new LinkedList<>();
+        // Reset background offset ke 0
+        bgOffsetY = 0;
 
+        activePlatforms = new LinkedList<>();
         difficultyTree = new DifficultyTree();
         currentDifficulty = difficultyTree.searchDifficulty(score);
-
         platformPatternQueue = new java.util.LinkedList<>();
         replenishQueue();
-
         generateInitialPlatforms();
-        System.out.println("--- GAME DIMULAI: Pemain = " + playerName + " ---");
     }
 
-    private void replenishQueue() {
-        System.out.println("\n[STRUKTUR 3 - Queue]: Mengisi ulang pola platform (FIFO)...");
-        double breakableChance = currentDifficulty.getBreakableProb();
 
+    private void replenishQueue() {
+        double breakableChance = currentDifficulty.getBreakableProb();
         for (int i = 0; i < 8; i++) {
             String type = "NORMAL";
-            if (!currentDifficulty.getLevelName().equals("EASY") && random.nextDouble() < breakableChance) {
-                type = "BREAKABLE";
+
+            // Mengatur kemunculan platform BREAKABLE atau MOVING di luar mode EASY
+            if (!currentDifficulty.getLevelName().equals("EASY")) {
+                double roll = random.nextDouble();
+                if (roll < breakableChance) {
+                    type = "BREAKABLE";
+                } else if (roll < breakableChance + 0.30) { // Peluang 30% untuk tipe bergerak
+                    type = "MOVING";
+                }
             }
             platformPatternQueue.add(type);
         }
-        System.out.println("[STRUKTUR 3 - Queue]: Isi Queue saat ini = " + platformPatternQueue);
     }
-
     private void generateInitialPlatforms() {
         activePlatforms.clear();
 
-        Platform basePlatform = new Platform(150, 500, 100, 15, "NORMAL");
+        // Pijakan dasar dibuat di Y = 770 agar menopang ninja saat frame pertama
+        Platform basePlatform = new Platform(150, 770, 100, 15, "NORMAL");
         activePlatforms.add(basePlatform);
 
-        int currentY = 500;
+        int currentY = 770;
         while (currentY > 0) {
             int gap = random.nextInt(currentDifficulty.getMaxGapY() - currentDifficulty.getMinGapY() + 1) + currentDifficulty.getMinGapY();
             currentY -= gap;
-
             int x = random.nextInt(WIDTH - 80);
-
-            if (platformPatternQueue.isEmpty()) {
-                replenishQueue();
-            }
+            if (platformPatternQueue.isEmpty()) replenishQueue();
             String type = platformPatternQueue.poll();
-
             activePlatforms.add(new Platform(x, currentY, 80, 15, type));
         }
     }
 
-    /** Ninja jatuh, tapi masih ada nyawa tersisa: respawn di tengah layar */
+
     private void respawnNinja() {
         ninja.setX(WIDTH / 2.0 - ninja.getWidth() / 2.0);
-        ninja.setY(HEIGHT / 2.0);
+        ninja.setY(700.0); // Ubah dari 1400.0 ke 700.0 agar aman di layar 900
         ninja.bounce();
-        System.out.println("[GAMEPLAY]: Nyawa berkurang! Sisa nyawa: " + lives);
     }
 
     private long elapsedMillis() {
@@ -306,7 +299,6 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     // ==========================================
     // GAME LOOP
     // ==========================================
-
     @Override
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() == timer) {
@@ -318,11 +310,14 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private void gameTick() {
         if (state != State.PLAYING) return;
 
+        for (Platform p : activePlatforms) {
+            p.update();
+        }
+
         int direction = 0;
         if (keyLeft) direction = -1;
         if (keyRight) direction = 1;
         ninja.move(direction);
-
         ninja.update(WIDTH);
 
         Platform collidedPlatform = null;
@@ -337,37 +332,48 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         if (collidedPlatform != null && collidedPlatform.getType().equals("BREAKABLE")) {
             collidedPlatform.setBroken(true);
             activePlatforms.remove(collidedPlatform);
-            System.out.println("[MEKANIK]: Platform BREAKABLE hancur dan dihapus dari activePlatforms!");
         }
 
+        // =========================================================================
+        // REVISI PERGERAKAN KAMERA SMOOTH & LERPED SCROLLING
+        // =========================================================================
+        // PERGERAKAN KAMERA KE ATAS YANG SMOOTH (Kembali ke basis HEIGHT = 900)
         if (ninja.getY() < HEIGHT / 2) {
-            double shiftY = HEIGHT / 2 - ninja.getY();
-            ninja.setY(HEIGHT / 2);
+            double targetShift = HEIGHT / 2.0 - ninja.getY();
+            double smoothShift = targetShift * 0.12; // Efek smooth ease-out
+
+            ninja.setY(ninja.getY() + smoothShift);
+            bgOffsetY += (smoothShift * 0.4); // Background bambu ikut bergulir smooth
 
             for (Platform p : activePlatforms) {
-                p.setY(p.getY() + (int) shiftY);
+                p.setY(p.getY() + (int) smoothShift);
             }
         }
+        // =========================================================================
 
         Platform highestPlatform = activePlatforms.getLast();
         while (highestPlatform.getY() > 0) {
             int gap = random.nextInt(currentDifficulty.getMaxGapY() - currentDifficulty.getMinGapY() + 1) + currentDifficulty.getMinGapY();
             int nextY = highestPlatform.getY() - gap;
-            int nextX = random.nextInt(WIDTH - 80);
+
+            // REVISI 1: Ubah lebar standar dari 80 menjadi 140 agar panjang ke samping
+            int platformWidth = 120;
+
+            // REVISI 2: Sesuaikan batas acak X (WIDTH - 140) agar platform tidak muncul keluar layar kanan
+            int nextX = random.nextInt(WIDTH - platformWidth);
 
             if (platformPatternQueue.isEmpty()) {
                 replenishQueue();
             }
             String nextType = platformPatternQueue.poll();
 
-            Platform newPlatform = new Platform(nextX, nextY, 80, 15, nextType);
+            // REVISI 3: Masukkan platformWidth (140) sebagai lebar barunya
+            Platform newPlatform = new Platform(nextX, nextY, platformWidth, 15, nextType);
             activePlatforms.add(newPlatform);
             highestPlatform = newPlatform;
         }
-
         while (!activePlatforms.isEmpty() && activePlatforms.getFirst().getY() > HEIGHT) {
-            Platform removed = activePlatforms.removeFirst();
-            System.out.println("[STRUKTUR 2 - LinkedList]: Menghapus platform lama di Y = " + removed.getY() + " (Tenggelam)");
+            activePlatforms.removeFirst();
         }
 
         double ninjaBottom = ninja.getY() + ninja.getHeight();
@@ -375,12 +381,10 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             if (!p.isPassed() && ninjaBottom < p.getY()) {
                 p.setPassed(true);
                 score++;
-                System.out.println("[GAMEPLAY]: Skor Bertambah! Skor saat ini: " + score);
 
                 DifficultyNode newDiff = difficultyTree.searchDifficulty(score);
                 if (newDiff != null && newDiff != currentDifficulty) {
                     currentDifficulty = newDiff;
-                    System.out.println("[STRUKTUR 4 - Tree]: Kesulitan berubah menjadi -> " + currentDifficulty.getLevelName());
                 }
             }
         }
@@ -398,7 +402,6 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     // ==========================================
     // RENDERING
     // ==========================================
-
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
@@ -417,7 +420,6 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         }
 
         ninja.draw(g2d);
-
         drawHUD(g2d);
 
         if (state == State.PAUSED) {
@@ -428,27 +430,47 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     }
 
     private void drawDynamicBackground(Graphics2D g2d) {
-        // Menggunakan gambar kustom jika berhasil di-load
-        if (customBgImage != null) {
-            g2d.drawImage(customBgImage, 0, 0, WIDTH, HEIGHT, this);
-        } else {
-            // Fallback bawaan jika gambar tidak ditemukan
-            Color topColor;
-            Color bottomColor;
+        int textureHeight = 2172; // Tinggi asli gambar
+        int yOffset = (int) (bgOffsetY % textureHeight);
+        int startY = -1200 + yOffset;
 
-            int refScore = (state == State.MENU) ? 0 : score;
+        // FASE 1: Awal permainan (Ninja masih di area bawah hingga ketinggian pertama)
+        if (bgOffsetY < textureHeight) {
+            if (customBgImage != null) {
+                g2d.drawImage(customBgImage, 0, startY, WIDTH, textureHeight, this);
 
-            if (refScore < 15) {
-                topColor = new Color(135, 206, 250);
-                bottomColor = new Color(70, 130, 180);
-            } else if (refScore < 35) {
-                topColor = new Color(25, 25, 112);
-                bottomColor = new Color(186, 85, 211);
-            } else {
-                topColor = new Color(10, 10, 25);
-                bottomColor = new Color(40, 20, 60);
+                // Di atasnya sudah menyambung Gambar 2
+                if (topBgImage != null) {
+                    g2d.drawImage(topBgImage, 0, startY - textureHeight, WIDTH, textureHeight, this);
+                }
             }
+        }
+        // FASE 2: Ninja sudah naik lebih tinggi (Transisi dari Gambar 2 ke Gambar 3)
+        else if (bgOffsetY >= textureHeight && bgOffsetY < textureHeight * 2) {
+            if (topBgImage != null) {
+                g2d.drawImage(topBgImage, 0, startY, WIDTH, textureHeight, this);
 
+                // Di atas Gambar 2, sekarang Gambar 3 yang menunggu
+                if (skyBgImage != null) {
+                    g2d.drawImage(skyBgImage, 0, startY - textureHeight, WIDTH, textureHeight, this);
+                } else {
+                    g2d.drawImage(topBgImage, 0, startY - textureHeight, WIDTH, textureHeight, this);
+                }
+            }
+        }
+        // FASE 3: Tertinggi / Langit Puncak (Gambar 3 meloop secara seamless ke atas tanpa batas)
+        else {
+            if (skyBgImage != null) {
+                g2d.drawImage(skyBgImage, 0, startY, WIDTH, textureHeight, this);
+                g2d.drawImage(skyBgImage, 0, startY - textureHeight, WIDTH, textureHeight, this);
+                g2d.drawImage(skyBgImage, 0, startY + textureHeight, WIDTH, textureHeight, this);
+            }
+        }
+
+        // Fallback warna jika semua gambar gagal dimuat
+        if (customBgImage == null && topBgImage == null && skyBgImage == null) {
+            Color topColor = new Color(135, 206, 250);
+            Color bottomColor = new Color(70, 130, 180);
             GradientPaint gp = new GradientPaint(0, 0, topColor, 0, HEIGHT, bottomColor);
             g2d.setPaint(gp);
             g2d.fillRect(0, 0, WIDTH, HEIGHT);
@@ -457,13 +479,11 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
     private void drawHUD(Graphics2D g2d) {
         int hudWidth = WIDTH - 90;
-
         g2d.setColor(new Color(0, 0, 0, 130));
         g2d.fill(new RoundRectangle2D.Double(10, 10, hudWidth, 108, 14, 14));
         g2d.setColor(new Color(255, 255, 255, 80));
         g2d.draw(new RoundRectangle2D.Double(10, 10, hudWidth, 108, 14, 14));
 
-        // Baris 1: Score & Waktu
         g2d.setColor(Color.WHITE);
         g2d.setFont(new Font("SansSerif", Font.BOLD, 18));
         g2d.drawString("Score: " + score, 22, 34);
@@ -472,21 +492,16 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         g2d.setFont(new Font("SansSerif", Font.BOLD, 16));
         g2d.drawString("Waktu: " + formatTime(elapsedMillis()), 150, 34);
 
-        // Baris 2: Nyawa (tampil di atas skor secara berurutan visual) & Difficulty
         drawLives(g2d, 22, 44);
 
         String level = currentDifficulty.getLevelName();
-        if (level.equals("EASY")) {
-            g2d.setColor(new Color(50, 205, 50));
-        } else if (level.equals("MEDIUM")) {
-            g2d.setColor(new Color(255, 165, 0));
-        } else {
-            g2d.setColor(new Color(220, 20, 60));
-        }
+        if (level.equals("EASY")) g2d.setColor(new Color(50, 205, 50));
+        else if (level.equals("MEDIUM")) g2d.setColor(new Color(255, 165, 0));
+        else g2d.setColor(new Color(220, 20, 60));
+
         g2d.setFont(new Font("SansSerif", Font.BOLD, 14));
         g2d.drawString("Difficulty: " + level, hudWidth - 130, 63);
 
-        // Baris 3-4: info struktur data (edukasi SDAT)
         g2d.setColor(new Color(245, 245, 245));
         g2d.setFont(new Font("Monospaced", Font.PLAIN, 11));
         g2d.drawString("LinkedList Platform: " + activePlatforms.size() + " aktif", 22, 85);
@@ -503,31 +518,21 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         g2d.drawString(queuePreview, 22, 101);
     }
 
-    /** Menggambar ikon nyawa (hati) - ditampilkan di atas skor sesuai revisi */
     private void drawLives(Graphics2D g2d, int x, int y) {
         g2d.setFont(new Font("SansSerif", Font.BOLD, 20));
         int cursorX = x;
         for (int i = 0; i < MAX_LIVES; i++) {
-            if (i < lives) {
-                g2d.setColor(new Color(220, 20, 60));
-            } else {
-                g2d.setColor(new Color(255, 255, 255, 60));
-            }
+            if (i < lives) g2d.setColor(new Color(220, 20, 60));
+            else g2d.setColor(new Color(255, 255, 255, 60));
             g2d.drawString("\u2665", cursorX, y + 18);
             cursorX += 24;
         }
     }
 
-    /**
-     * Layar menu utama: input nama, tampilan High Score, tombol OK.
-     * Komponen interaktif (nameField, okButton) sudah diposisikan via setBounds,
-     * di sini hanya digambar teks pendukung di sekitarnya.
-     */
     private void drawMenuScreen(Graphics2D g2d) {
         g2d.setColor(new Color(0, 0, 0, 150));
         g2d.fillRect(0, 0, WIDTH, HEIGHT);
 
-        // Kartu kaca (glass card) sebagai latar form
         g2d.setColor(new Color(20, 20, 40, 150));
         g2d.fill(new RoundRectangle2D.Double(50, 190, WIDTH - 100, 460, 24, 24));
         g2d.setColor(new Color(255, 215, 0, 120));
@@ -545,13 +550,10 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         g2d.setFont(new Font("SansSerif", Font.PLAIN, 14));
         drawCentered(g2d, "Masukkan Nama Pemain", 340);
 
-        // (nameField & okButton digambar otomatis oleh Swing di atas ini)
-
         g2d.setColor(new Color(255, 255, 255, 200));
         g2d.setFont(new Font("SansSerif", Font.ITALIC, 12));
         drawCentered(g2d, "Tekan ENTER atau klik tombol untuk mulai", 500);
 
-        // Kotak High Score
         g2d.setColor(new Color(0, 0, 0, 100));
         g2d.fill(new RoundRectangle2D.Double(WIDTH / 2 - 170, 525, 340, 62, 16, 16));
         g2d.setColor(new Color(255, 215, 0, 160));
@@ -573,11 +575,9 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private void drawPauseOverlay(Graphics2D g2d) {
         g2d.setColor(new Color(0, 0, 0, 170));
         g2d.fillRect(0, 0, WIDTH, HEIGHT);
-
         g2d.setColor(Color.WHITE);
         g2d.setFont(new Font("SansSerif", Font.BOLD, 34));
         drawCentered(g2d, "PAUSED", HEIGHT / 2 - 70);
-
         g2d.setColor(new Color(255, 215, 0));
         g2d.setFont(new Font("SansSerif", Font.PLAIN, 15));
         drawCentered(g2d, "Skor saat ini: " + score + "   |   Waktu: " + formatTime(elapsedMillis()), HEIGHT / 2 - 30);
@@ -615,48 +615,59 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         g2d.drawString(text, (WIDTH - textWidth) / 2, y);
     }
 
-    // ==========================================
-    // KEYLISTENER IMPLEMENTATIONS
-    // ==========================================
-
     @Override
     public void keyTyped(KeyEvent e) {}
 
     @Override
     public void keyPressed(KeyEvent e) {
         int keyCode = e.getKeyCode();
-
         if (state == State.PLAYING) {
-            if (keyCode == KeyEvent.VK_A || keyCode == KeyEvent.VK_LEFT) {
-                keyLeft = true;
-            }
-            if (keyCode == KeyEvent.VK_D || keyCode == KeyEvent.VK_RIGHT) {
-                keyRight = true;
-            }
+            if (keyCode == KeyEvent.VK_A || keyCode == KeyEvent.VK_LEFT) keyLeft = true;
+            if (keyCode == KeyEvent.VK_D || keyCode == KeyEvent.VK_RIGHT) keyRight = true;
         }
-
         if (keyCode == KeyEvent.VK_ESCAPE) {
-            if (state == State.PLAYING) {
-                pauseGame();
-            } else if (state == State.PAUSED) {
-                resumeGame();
-            }
+            if (state == State.PLAYING) pauseGame();
+            else if (state == State.PAUSED) resumeGame();
         }
-
-        if (keyCode == KeyEvent.VK_SPACE && state == State.GAME_OVER) {
-            startGame();
-        }
+        if (keyCode == KeyEvent.VK_SPACE && state == State.GAME_OVER) startGame();
     }
 
     @Override
     public void keyReleased(KeyEvent e) {
         int keyCode = e.getKeyCode();
+        if (keyCode == KeyEvent.VK_A || keyCode == KeyEvent.VK_LEFT) keyLeft = false;
+        if (keyCode == KeyEvent.VK_D || keyCode == KeyEvent.VK_RIGHT) keyRight = false;
+    }
+    private void playBGM() {
+        try {
+            // Hentikan musik jika sebelumnya sudah ada yang berjalan (mencegah suara bertumpuk)
+            if (backgroundMusic != null && backgroundMusic.isRunning()) {
+                backgroundMusic.stop();
+            }
 
-        if (keyCode == KeyEvent.VK_A || keyCode == KeyEvent.VK_LEFT) {
-            keyLeft = false;
+            // Ambil file lagu dari folder resources
+            java.net.URL soundURL = getClass().getResource("resources/bgm_game.wav");
+
+            if (soundURL != null) {
+                AudioInputStream audioStream = AudioSystem.getAudioInputStream(soundURL);
+                backgroundMusic = AudioSystem.getClip();
+                backgroundMusic.open(audioStream);
+
+                // Mengatur agar lagu berputar terus-menerus (looping) tanpa henti
+                backgroundMusic.loop(Clip.LOOP_CONTINUOUSLY);
+                backgroundMusic.start();
+            } else {
+                System.out.println("[WARNING]: File musik bgm_game.wav tidak ditemukan!");
+            }
+        } catch (Exception e) {
+            System.out.println("[ERROR]: Gagal memutar musik latar: " + e.getMessage());
         }
-        if (keyCode == KeyEvent.VK_D || keyCode == KeyEvent.VK_RIGHT) {
-            keyRight = false;
+    }
+
+    // Method tambahan untuk menghentikan musik (saat Game Over / Menu)
+    private void stopBGM() {
+        if (backgroundMusic != null) {
+            backgroundMusic.stop();
         }
     }
 }
