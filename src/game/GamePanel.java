@@ -215,7 +215,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         applyVisibilityForState();
     }
     public void restartGame() {
-        ninja = new Ninja(180, 700, 70); // Y diset di 700
+        ninja = new Ninja(180, 700, 100); // Y diset di 700
         score = 0;
         lives = MAX_LIVES;
         keyLeft = false;
@@ -320,20 +320,47 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         ninja.move(direction);
         ninja.update(WIDTH);
 
+        // =========================================================================
+        // PERBAIKAN DETEKSI TABRAKAN (ANTI LOMPAT GAIB SEBELAH KIRI)
+        // =========================================================================
         Platform collidedPlatform = null;
         for (Platform p : activePlatforms) {
-            if (p.checkCollision(ninja)) {
-                ninja.bounce();
-                collidedPlatform = p;
-                break;
+
+            // 1. Ambil batas koordinat kaki vertikal Ninja
+            double kakiNinjaY = ninja.getY() + ninja.getHeight() - 45;
+            int jarakVertikal = Math.abs((int) (kakiNinjaY - p.getY()));
+
+            // Toleransi vertikal diperketat dari 30px menjadi 18px agar tidak floating
+            if (jarakVertikal < 18) {
+
+                // 2. KUNCI HORIZONTAL: Pangkas padding kosong di sebelah kiri gambar Ninja
+                // (Menggeser hitbox kiri visual sejauh 35px agar pas di tubuh real karakter)
+                int paddingKiriNinja = 35;
+                int paddingKananNinja = 8;
+
+                double batasKiriNinja = ninja.getX() + paddingKiriNinja;
+                double batasKananNinja = ninja.getX() + ninja.getWidth() - paddingKananNinja;
+
+                // 3. Cek apakah badan visual Ninja benar-benar berada di atas jangkauan platform X
+                boolean adaDiAtasPlatform = (batasKananNinja > p.getX()) && (batasKiriNinja < p.getX() + p.getWidth());
+
+                if (adaDiAtasPlatform) {
+                    // Panggil fungsi checkCollision internal milik platform sebagai validasi final
+                    if (p.checkCollision(ninja)) {
+                        ninja.bounce();
+                        collidedPlatform = p;
+                        break;
+                    }
+                }
             }
         }
 
+        // Eksekusi jika platform yang diinjak adalah jenis yang bisa hancur
         if (collidedPlatform != null && collidedPlatform.getType().equals("BREAKABLE")) {
             collidedPlatform.setBroken(true);
             activePlatforms.remove(collidedPlatform);
         }
-
+        // =========================================================================
         // =========================================================================
         // REVISI PERGERAKAN KAMERA SMOOTH & LERPED SCROLLING
         // =========================================================================
@@ -356,18 +383,26 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             int gap = random.nextInt(currentDifficulty.getMaxGapY() - currentDifficulty.getMinGapY() + 1) + currentDifficulty.getMinGapY();
             int nextY = highestPlatform.getY() - gap;
 
-            // REVISI 1: Ubah lebar standar dari 80 menjadi 140 agar panjang ke samping
-            int platformWidth = 120;
-
-            // REVISI 2: Sesuaikan batas acak X (WIDTH - 140) agar platform tidak muncul keluar layar kanan
-            int nextX = random.nextInt(WIDTH - platformWidth);
-
+            // 1. Ambil tipe platform terlebih dahulu dari queue
             if (platformPatternQueue.isEmpty()) {
                 replenishQueue();
             }
             String nextType = platformPatternQueue.poll();
 
-            // REVISI 3: Masukkan platformWidth (140) sebagai lebar barunya
+            // 2. Tentukan lebar platform secara konsisten berdasarkan tipenya
+            int platformWidth;
+            if (nextType.equals("MOVING")) {
+                platformWidth = 120; // Agak besar untuk platform bergerak
+            } else if (nextType.equals("BREAKABLE")) {
+                platformWidth = 80;  // Kecil untuk platform yang bisa hilang
+            } else {
+                platformWidth = 80;  // Kecil untuk platform normal yang diam
+            }
+
+            // 3. Hitung koordinat X secara dinamis mengikuti lebar platformWidth baru
+            int nextX = random.nextInt(WIDTH - platformWidth);
+
+            // 4. Buat objek platform baru dengan spesifikasi yang sudah dinamis
             Platform newPlatform = new Platform(nextX, nextY, platformWidth, 15, nextType);
             activePlatforms.add(newPlatform);
             highestPlatform = newPlatform;
@@ -375,7 +410,6 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         while (!activePlatforms.isEmpty() && activePlatforms.getFirst().getY() > HEIGHT) {
             activePlatforms.removeFirst();
         }
-
         double ninjaBottom = ninja.getY() + ninja.getHeight();
         for (Platform p : activePlatforms) {
             if (!p.isPassed() && ninjaBottom < p.getY()) {

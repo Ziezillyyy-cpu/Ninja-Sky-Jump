@@ -78,15 +78,30 @@ public class Platform {
         if (isBroken) return false;
 
         if (ninja.getVy() > 0) {
-            int offsetAsapKaki = 45;
+            int offsetAsapKaki = 45; //
             double ninjaBottom = ninja.getY() + ninja.getHeight() - offsetAsapKaki;
             double ninjaPrevBottom = ninjaBottom - ninja.getVy();
 
-            if (ninja.getX() + ninja.getWidth() - 4 > this.x && ninja.getX() + 4 < this.x + this.width) {
+            // ====================================================================
+            // REVISI DETEKSI HORIZONTAL BERSAMA PADDING TRANSPARAN
+            // ====================================================================
+            // Potong area kosong di sebelah kiri gambar Ninja (sesuaikan angkanya jika kurang/lebih)
+            int paddingKiri = 35;
+            // Pertahankan padding sisi kanan yang sudah bekerja dengan benar
+            int paddingKanan = 8;
+
+            // Sisi kiri fisik Ninja yang sudah digeser ke kanan agar pas dengan badan visualnya
+            double ninjaLeftEdge = ninja.getX() + paddingKiri;
+            // Sisi kanan fisik Ninja yang sudah disesuaikan
+            double ninjaRightEdge = ninja.getX() + ninja.getWidth() - paddingKanan;
+
+            // Cek apakah posisi horizontal badan Ninja berada di atas platform bambu
+            if (ninjaRightEdge > this.x && ninjaLeftEdge < this.x + this.width) {
                 if (ninjaPrevBottom <= this.y + 4 && ninjaBottom >= this.y) {
                     return true;
                 }
             }
+            // ====================================================================
         }
         return false;
     }
