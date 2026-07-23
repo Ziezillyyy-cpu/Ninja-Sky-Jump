@@ -77,31 +77,49 @@ public class Platform {
     public boolean checkCollision(Ninja ninja) {
         if (isBroken) return false;
 
+        // Hanya cek jika Ninja sedang jatuh ke bawah (vy > 0)
         if (ninja.getVy() > 0) {
-            int offsetAsapKaki = 45; //
-            double ninjaBottom = ninja.getY() + ninja.getHeight() - offsetAsapKaki;
+
+            // =========================================================================
+            // PERBAIKAN: POTONG AREA TRANSPARAN KANAN NINJA & KIRI PLATFORM
+            // =========================================================================
+
+            // 1. Besarkan padding kanan Ninja agar ujung kanan fisiknya masuk lebih ke dalam ke badannya
+            int ninjaPaddingKiri = 20;
+            int ninjaPaddingKanan = 45; // <-- DITAMBAH (pangkas area transparan sebelah kanan Ninja)
+
+            double ninjaLeftEdge = ninja.getX() + ninjaPaddingKiri;
+            double ninjaRightEdge = ninja.getX() + ninja.getWidth() - ninjaPaddingKanan;
+
+            // 2. Beri margin di sisi kiri platform agar Ninja harus benar-benar di atas bambu
+            int platformMarginKiri = 10;  // <-- DITAMBAH (geser batas deteksi platform ke kanan)
+            int platformMarginKanan = 5;
+
+            double platformLeftEdge = this.x + platformMarginKiri;
+            double platformRightEdge = (this.x + this.width) - platformMarginKanan;
+
+            // Cek overlap horizontal
+            boolean horizontalOverlap = (ninjaRightEdge > platformLeftEdge) && (ninjaLeftEdge < platformRightEdge);
+
+            // Jika badan Ninja tidak tepat di atas bambu, BATALKAN pementalan!
+            if (!horizontalOverlap) {
+                return false;
+            }
+
+            // =========================================================================
+            // DETEKSI VERTIKAL (TINGGI PIJAKAN)
+            // =========================================================================
+            int offsetBawahNinja = 35;
+            double ninjaBottom = ninja.getY() + ninja.getHeight() - offsetBawahNinja;
             double ninjaPrevBottom = ninjaBottom - ninja.getVy();
 
-            // ====================================================================
-            // REVISI DETEKSI HORIZONTAL BERSAMA PADDING TRANSPARAN
-            // ====================================================================
-            // Potong area kosong di sebelah kiri gambar Ninja (sesuaikan angkanya jika kurang/lebih)
-            int paddingKiri = 35;
-            // Pertahankan padding sisi kanan yang sudah bekerja dengan benar
-            int paddingKanan = 8;
+            int platformSurfaceY = this.y;
 
-            // Sisi kiri fisik Ninja yang sudah digeser ke kanan agar pas dengan badan visualnya
-            double ninjaLeftEdge = ninja.getX() + paddingKiri;
-            // Sisi kanan fisik Ninja yang sudah disesuaikan
-            double ninjaRightEdge = ninja.getX() + ninja.getWidth() - paddingKanan;
+            boolean verticalOverlap = (ninjaPrevBottom <= platformSurfaceY + 15) && (ninjaBottom >= platformSurfaceY - 5);
 
-            // Cek apakah posisi horizontal badan Ninja berada di atas platform bambu
-            if (ninjaRightEdge > this.x && ninjaLeftEdge < this.x + this.width) {
-                if (ninjaPrevBottom <= this.y + 4 && ninjaBottom >= this.y) {
-                    return true;
-                }
+            if (verticalOverlap) {
+                return true;
             }
-            // ====================================================================
         }
         return false;
     }
@@ -112,6 +130,7 @@ public class Platform {
      */
     public void draw(Graphics2D g) {
         if (isBroken) return;
+
 
         if (type.equals("NORMAL")) {
             if (imgNormal != null) {
