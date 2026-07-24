@@ -9,14 +9,15 @@ public class DifficultyTree {
     private DifficultyNode root;
 
     public DifficultyTree() {
-        // Menginisialisasi pohon biner tingkat kesulitan.
-        // Menggunakan MEDIUM sebagai root agar seimbang secara struktur BST:
-        //               [ MEDIUM ] (Skor 15-34)
+        // Menginisialisasi pohon biner tingkat kesulitan dengan rentang kelipatan 50:
+        //
+        //               [ MEDIUM ] (Skor 50 - 99)
         //              /          \
-        //   [ EASY ] (Skor 0-14)   [ HARD ] (Skor 35+)
-        root = new DifficultyNode("MEDIUM", 15, 34, 85, 110, 0.35);
-        root.left = new DifficultyNode("EASY", 0, 14, 60, 85, 0.0);
-        root.right = new DifficultyNode("HARD", 35, Integer.MAX_VALUE, 105, 135, 0.60);
+        //   [ EASY ] (Skor 0 - 49)  [ HARD ] (Skor 100+)
+
+        root = new DifficultyNode("MEDIUM", 50, 99, 85, 110, 0.35);
+        root.left = new DifficultyNode("EASY", 0, 49, 60, 85, 0.0);
+        root.right = new DifficultyNode("HARD", 100, Integer.MAX_VALUE, 105, 135, 0.60);
     }
 
     /**

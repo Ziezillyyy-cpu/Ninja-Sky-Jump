@@ -37,8 +37,8 @@ public class Ninja {
         this.y = y;
 
         // Hitbox fisik Ramping
-        this.width = 50;
-        this.height = 75;
+        this.width = 55;
+        this.height = 85;
 
         this.vx = 0;
         this.vy = JUMP_STRENGTH;
@@ -148,8 +148,8 @@ public class Ninja {
         if (frames.length > 0 && currentFrame < frames.length) {
             Image img = frames[currentFrame];
 
-            int extraWidth = 15;
-            int extraHeight = 45;
+            int extraWidth = 20;
+            int extraHeight = 55;
             int drawWidth = width + extraWidth;
             int drawHeight = height + extraHeight;
 
