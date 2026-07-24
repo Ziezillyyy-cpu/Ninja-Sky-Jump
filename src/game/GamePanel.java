@@ -17,6 +17,7 @@ import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
 import java.util.Random;
 import javax.sound.sampled.AudioInputStream;
@@ -27,8 +28,8 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     public static final int WIDTH = 600;
     public static final int HEIGHT = 900;
 
-    // State Tambahan: SHOP
-    private enum State { MENU, PLAYING, PAUSED, GAME_OVER, SHOP }
+    // State Tambahan: SHOP & LEADERBOARD
+    private enum State { MENU, PLAYING, PAUSED, GAME_OVER, SHOP, LEADERBOARD }
 
     private State state = State.MENU;
 
@@ -49,7 +50,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private double bgOffsetY = 0;
 
     private String playerName = "Ninja";
-    private HighScoreManager.HighScoreData highScore;
+    private ScoreEntry topHighScore;
     private java.awt.Image customBgImage;
     private java.awt.Image topBgImage;
     private java.awt.Image skyBgImage;
@@ -62,6 +63,9 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private java.awt.Image springImage;
 
     private Clip backgroundMusic;
+
+    // Scroll offset untuk Leaderboard
+    private int leaderboardScrollY = 0;
 
     // Struktur Data
     private LinkedList<Platform> activePlatforms;
@@ -77,6 +81,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private RoundedTextField nameField;
     private RoundedButton okButton;
     private RoundedButton shopButton;
+    private RoundedButton leaderboardButton;
     private RoundedButton exitButton;
     private RoundedButton pauseButton;
     private RoundedButton resumeButton;
@@ -90,13 +95,16 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     private RoundedButton btnSkinGold;
     private RoundedButton btnBackToMenu;
 
+    // Komponen UI Leaderboard
+    private RoundedButton btnBackFromLeaderboard;
+
     public GamePanel() {
         setPreferredSize(new Dimension(WIDTH, HEIGHT));
         setFocusable(true);
         setLayout(null);
         addKeyListener(this);
         random = new Random();
-        highScore = HighScoreManager.load();
+        topHighScore = HighScoreManager.getTopScore();
 
         try {
             customBgImage = new javax.swing.ImageIcon(getClass().getResource("resources/ninja_bg.png")).getImage();
@@ -110,10 +118,26 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         }
 
         buildMenuUI();
-        buildShopUI(); // Inisialisasi UI Toko Skin
+        buildShopUI();
+        buildLeaderboardUI();
         buildInGameUI();
         buildPauseUI();
         buildGameOverUI();
+
+        // Listener Scroll Wheel Mouse khusus Halaman Leaderboard
+        addMouseWheelListener(e -> {
+            if (state == State.LEADERBOARD) {
+                leaderboardScrollY -= e.getWheelRotation() * 25;
+
+                int totalItems = HighScoreManager.loadLeaderboard().size();
+                int maxScroll = Math.max(0, (totalItems * 75) - 500);
+
+                if (leaderboardScrollY > 0) leaderboardScrollY = 0;
+                if (leaderboardScrollY < -maxScroll) leaderboardScrollY = -maxScroll;
+
+                repaint();
+            }
+        });
 
         applyVisibilityForState();
         SwingUtilities.invokeLater(() -> nameField.requestFocusInWindow());
@@ -124,24 +148,29 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
     private void buildMenuUI() {
         nameField = new RoundedTextField(16);
-        nameField.setBounds(WIDTH / 2 - 130, 355, 260, 44);
+        nameField.setBounds(WIDTH / 2 - 130, 320, 260, 40);
         nameField.setText(playerName);
         nameField.addActionListener(e -> startGame());
         add(nameField);
 
         okButton = new RoundedButton("OK - MULAI", new Color(46, 160, 90), new Color(60, 200, 115), Color.WHITE);
-        okButton.setBounds(WIDTH / 2 - 110, 412, 220, 46);
+        okButton.setBounds(WIDTH / 2 - 110, 370, 220, 42);
         okButton.addActionListener(e -> startGame());
         add(okButton);
 
         shopButton = new RoundedButton("SKIN", new Color(218, 165, 32), new Color(238, 200, 50), Color.WHITE);
-        shopButton.setBounds(WIDTH / 2 - 110, 468, 220, 46);
+        shopButton.setBounds(WIDTH / 2 - 110, 420, 220, 42);
         shopButton.addActionListener(e -> goToShop());
         add(shopButton);
 
+        leaderboardButton = new RoundedButton("LEADERBOARD", new Color(70, 130, 180), new Color(100, 160, 210), Color.WHITE);
+        leaderboardButton.setBounds(WIDTH / 2 - 110, 470, 220, 42);
+        leaderboardButton.addActionListener(e -> goToLeaderboard());
+        add(leaderboardButton);
+
         exitButton = new RoundedButton("KELUAR", new Color(178, 34, 52), new Color(214, 55, 75), Color.WHITE);
-        exitButton.setBounds(WIDTH / 2 - 110, 524, 220, 46);
-        exitButton.addActionListener(e -> System.exit(0)); // Menutup aplikasi saat diklik
+        exitButton.setBounds(WIDTH / 2 - 110, 520, 220, 42);
+        exitButton.addActionListener(e -> System.exit(0));
         add(exitButton);
     }
 
@@ -165,6 +194,13 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         btnBackToMenu.setBounds(WIDTH / 2 - 100, 720, 200, 45);
         btnBackToMenu.addActionListener(e -> goToMenu());
         add(btnBackToMenu);
+    }
+
+    private void buildLeaderboardUI() {
+        btnBackFromLeaderboard = new RoundedButton("KEMBALI", new Color(80, 80, 95), new Color(105, 105, 125), Color.WHITE);
+        btnBackFromLeaderboard.setBounds(WIDTH / 2 - 100, 720, 200, 45);
+        btnBackFromLeaderboard.addActionListener(e -> goToMenu());
+        add(btnBackFromLeaderboard);
     }
 
     private void buildInGameUI() {
@@ -200,10 +236,12 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
     }
 
     private void applyVisibilityForState() {
-        nameField.setVisible(state == State.MENU);
-        okButton.setVisible(state == State.MENU);
-        if (shopButton != null) shopButton.setVisible(state == State.MENU);
-        if (exitButton != null) exitButton.setVisible(state == State.MENU);
+        boolean isMenu = (state == State.MENU);
+        nameField.setVisible(isMenu);
+        okButton.setVisible(isMenu);
+        if (shopButton != null) shopButton.setVisible(isMenu);
+        if (leaderboardButton != null) leaderboardButton.setVisible(isMenu);
+        if (exitButton != null) exitButton.setVisible(isMenu);
 
         pauseButton.setVisible(state == State.PLAYING);
         resumeButton.setVisible(state == State.PAUSED);
@@ -211,17 +249,25 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         restartButton.setVisible(state == State.GAME_OVER);
         menuFromGameOverButton.setVisible(state == State.GAME_OVER);
 
-        // Visibilitas Tombol Toko
         boolean isShop = (state == State.SHOP);
         if (btnSkinDefault != null) btnSkinDefault.setVisible(isShop);
         if (btnSkinBlue != null) btnSkinBlue.setVisible(isShop);
         if (btnSkinGold != null) btnSkinGold.setVisible(isShop);
         if (btnBackToMenu != null) btnBackToMenu.setVisible(isShop);
+
+        if (btnBackFromLeaderboard != null) btnBackFromLeaderboard.setVisible(state == State.LEADERBOARD);
     }
 
     private void goToShop() {
         state = State.SHOP;
         updateShopButtons();
+        applyVisibilityForState();
+        repaint();
+    }
+
+    private void goToLeaderboard() {
+        state = State.LEADERBOARD;
+        leaderboardScrollY = 0; // Reset scroll ke bagian atas
         applyVisibilityForState();
         repaint();
     }
@@ -273,6 +319,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
     private void goToMenu() {
         state = State.MENU;
+        topHighScore = HighScoreManager.getTopScore();
         nameField.setText(playerName);
         applyVisibilityForState();
         nameField.requestFocusInWindow();
@@ -283,17 +330,20 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         finalPlayDurationMillis = System.currentTimeMillis() - gameStartMillis - pausedAccumMillis;
 
         stopBGM();
-        isNewHighScore = score > highScore.score;
-        if (isNewHighScore) {
-            highScore = new HighScoreManager.HighScoreData(score, playerName);
-            HighScoreManager.save(highScore);
-        }
+
+        // Simpan skor ke leaderboard
+        HighScoreManager.saveScore(playerName, score);
+
+        // Cek rekor tertinggi utama
+        isNewHighScore = (score > topHighScore.getScore());
+        topHighScore = HighScoreManager.getTopScore();
+
         applyVisibilityForState();
     }
 
     public void restartGame() {
         ninja = new Ninja(180, 700, 100);
-        ninja.setSkin(equippedSkin); // Pasang skin terpilih saat awal bermain
+        ninja.setSkin(equippedSkin);
 
         score = 0;
         lives = MAX_LIVES;
@@ -348,11 +398,6 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
             Platform p = new Platform(x, currentY, 80, 15, type);
             activePlatforms.add(p);
-
-            if (random.nextDouble() < 0.15 && !type.equals("BREAKABLE")) {
-                String itemType = random.nextBoolean() ? "SPRING" : "PARACHUTE";
-                activeItems.add(new Item(p, itemType));
-            }
         }
     }
 
@@ -441,7 +486,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             }
         }
 
-        // Generasi Platform Baru
+        // Generasi Platform Baru & Aturan Item Spawning
         Platform highestPlatform = activePlatforms.getLast();
         while (highestPlatform.getY() > 0) {
             int gap = random.nextInt(currentDifficulty.getMaxGapY() - currentDifficulty.getMinGapY() + 1) + currentDifficulty.getMinGapY();
@@ -457,9 +502,21 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             activePlatforms.add(newPlatform);
             highestPlatform = newPlatform;
 
-            if (random.nextDouble() < 0.20 && !nextType.equals("BREAKABLE")) {
-                String itemType = random.nextBoolean() ? "SPRING" : "PARACHUTE";
-                activeItems.add(new Item(newPlatform, itemType));
+            // LOGIKA ATURAN SKOR SPANNING ITEM
+            if (score > 40 && random.nextDouble() < 0.20 && !nextType.equals("BREAKABLE")) {
+                String itemType = null;
+
+                if (score > 80) {
+                    // Skor > 80: Parasut atau Pegas
+                    itemType = random.nextBoolean() ? "SPRING" : "PARACHUTE";
+                } else {
+                    // Skor 41 - 80: Hanya Parasut
+                    itemType = "PARACHUTE";
+                }
+
+                if (itemType != null) {
+                    activeItems.add(new Item(newPlatform, itemType));
+                }
             }
         }
 
@@ -508,20 +565,21 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             return;
         }
 
-        // Draw Platform
+        if (state == State.LEADERBOARD) {
+            drawLeaderboardScreen(g2d);
+            return;
+        }
+
         for (Platform p : activePlatforms) {
             p.draw(g2d);
         }
 
-        // Draw Item Buff
         for (Item item : activeItems) {
             item.draw(g2d, parachuteImage, springImage);
         }
 
-        // Draw Ninja
         ninja.draw(g2d);
 
-        // Draw Parasut
         if (ninja.hasParachute() && parachuteImage != null) {
             int parachuteX = (int) ninja.getX() - 5;
             int parachuteY = (ninja.getVy() >= 0) ? (int) ninja.getY() - 5 : (int) ninja.getY() - 35;
@@ -599,21 +657,6 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
         g2d.setFont(new Font("SansSerif", Font.BOLD, 14));
         g2d.drawString("Difficulty: " + level, hudWidth - 130, 63);
-
-        g2d.setColor(new Color(245, 245, 245));
-        g2d.setFont(new Font("Monospaced", Font.PLAIN, 11));
-//        g2d.drawString("LinkedList Platform: " + activePlatforms.size() + " aktif", 22, 85);
-//
-//        String queuePreview = "Queue (FIFO): ";
-//        if (!platformPatternQueue.isEmpty()) {
-//            java.util.Iterator<String> it = platformPatternQueue.iterator();
-//            queuePreview += "[" + it.next().substring(0, 4) + ", "
-//                    + (it.hasNext() ? it.next().substring(0, 4) : "") + ", "
-//                    + (it.hasNext() ? it.next().substring(0, 4) : "") + ", ...]";
-//        } else {
-//            queuePreview += "[]";
-//        }
-//        g2d.drawString(queuePreview, 22, 101);
     }
 
     private void drawLives(Graphics2D g2d, int x, int y) {
@@ -631,45 +674,40 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         g2d.setColor(new Color(0, 0, 0, 150));
         g2d.fillRect(0, 0, WIDTH, HEIGHT);
 
-        // KOTAK CONTAINER (Ditinggikan sedikit menjadi 550px)
         g2d.setColor(new Color(20, 20, 40, 150));
-        g2d.fill(new RoundRectangle2D.Double(50, 160, WIDTH - 100, 550, 24, 24));
+        g2d.fill(new RoundRectangle2D.Double(50, 140, WIDTH - 100, 580, 24, 24));
         g2d.setColor(new Color(255, 215, 0, 120));
-        g2d.draw(new RoundRectangle2D.Double(50, 160, WIDTH - 100, 550, 24, 24));
+        g2d.draw(new RoundRectangle2D.Double(50, 140, WIDTH - 100, 580, 24, 24));
 
         g2d.setColor(Color.WHITE);
         g2d.setFont(new Font("SansSerif", Font.BOLD, 34));
-        drawCentered(g2d, "NINJA SKY JUMP", 230);
+        drawCentered(g2d, "NINJA SKY JUMP", 200);
 
         g2d.setColor(new Color(255, 215, 0));
         g2d.setFont(new Font("SansSerif", Font.PLAIN, 15));
-        drawCentered(g2d, "Gunakan A/D atau <- -> untuk bergerak", 265);
+        drawCentered(g2d, "Gunakan A/D atau <- -> untuk bergerak", 235);
 
         g2d.setColor(new Color(220, 220, 230));
         g2d.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        drawCentered(g2d, "Masukkan Nama Pemain", 325);
+        drawCentered(g2d, "Masukkan Nama Pemain", 295);
 
-        g2d.setColor(new Color(255, 255, 255, 200));
-        g2d.setFont(new Font("SansSerif", Font.ITALIC, 12));
-        drawCentered(g2d, "Tekan ENTER atau klik tombol untuk mulai", 590);
-
-        // KOTAK HIGH SCORE (Diturunkan posisi Y nya ke 605)
+        // High Score Teratas
         g2d.setColor(new Color(0, 0, 0, 100));
-        g2d.fill(new RoundRectangle2D.Double(WIDTH / 2 - 170, 605, 340, 58, 16, 16));
+        g2d.fill(new RoundRectangle2D.Double(WIDTH / 2 - 170, 585, 340, 58, 16, 16));
         g2d.setColor(new Color(255, 215, 0, 160));
-        g2d.draw(new RoundRectangle2D.Double(WIDTH / 2 - 170, 605, 340, 58, 16, 16));
+        g2d.draw(new RoundRectangle2D.Double(WIDTH / 2 - 170, 585, 340, 58, 16, 16));
 
         g2d.setColor(new Color(255, 215, 0));
         g2d.setFont(new Font("SansSerif", Font.BOLD, 15));
-        drawCentered(g2d, "\u2605 HIGH SCORE: " + highScore.score, 628);
+        drawCentered(g2d, "\u2605 HIGH SCORE: " + topHighScore.getScore(), 608);
 
         g2d.setColor(Color.WHITE);
         g2d.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        drawCentered(g2d, "Dipegang oleh: " + highScore.name, 648);
+        drawCentered(g2d, "Dipegang oleh: " + topHighScore.getName(), 628);
 
         g2d.setColor(new Color(200, 200, 210));
         g2d.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        drawCentered(g2d, "Nyawa: " + MAX_LIVES + "x kesempatan  |  Skor & waktu tercatat tiap sesi", 690);
+        drawCentered(g2d, "Nyawa: " + MAX_LIVES + "x kesempatan  |  Skor  tercatat tiap sesi", 685);
     }
 
     private void drawShopScreen(Graphics2D g2d) {
@@ -700,7 +738,6 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         g2d.setColor(new Color(255, 255, 255, 40));
         g2d.drawRoundRect(60, y, WIDTH - 120, 120, 16, 16);
 
-        // Frame Pertama untuk Pratinjau
         try {
             java.net.URL url = getClass().getResource("resources/" + spritesheetName);
             if (url == null) {
@@ -731,6 +768,69 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
             g2d.setColor(new Color(200, 200, 200));
             g2d.drawString("Gratis", 150, y + 80);
         }
+    }
+
+    private void drawLeaderboardScreen(Graphics2D g2d) {
+        g2d.setColor(new Color(0, 0, 0, 160));
+        g2d.fillRect(0, 0, WIDTH, HEIGHT);
+
+        g2d.setColor(new Color(25, 20, 45, 220));
+        g2d.fill(new RoundRectangle2D.Double(40, 60, WIDTH - 80, 740, 24, 24));
+        g2d.setColor(new Color(218, 165, 32, 180));
+        g2d.draw(new RoundRectangle2D.Double(40, 60, WIDTH - 80, 740, 24, 24));
+
+        g2d.setColor(Color.WHITE);
+        g2d.setFont(new Font("SansSerif", Font.BOLD, 32));
+        drawCentered(g2d, "LEADERBOARD", 110);
+
+        List<ScoreEntry> list = HighScoreManager.loadLeaderboard();
+
+        g2d.setColor(new Color(255, 215, 0));
+        g2d.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        drawCentered(g2d, "Total Pemain: " + list.size() + " | Scroll Mouse untuk melihat seluruhnya", 138);
+
+        if (list.isEmpty()) {
+            g2d.setColor(Color.LIGHT_GRAY);
+            g2d.setFont(new Font("SansSerif", Font.ITALIC, 18));
+            drawCentered(g2d, "Belum ada skor tersimpan.", 350);
+            return;
+        }
+
+        // Batasi Clip Area menggambar agar list tidak meluap ke luar kotak
+        java.awt.Shape oldClip = g2d.getClip();
+        g2d.clipRect(50, 160, WIDTH - 100, 540);
+
+        int startY = 170 + leaderboardScrollY;
+
+        for (int i = 0; i < list.size(); i++) {
+            ScoreEntry entry = list.get(i);
+            int cardY = startY + (i * 75);
+
+            if (cardY + 70 >= 160 && cardY <= 700) {
+                g2d.setColor(new Color(255, 255, 255, 15));
+                g2d.fillRoundRect(60, cardY, WIDTH - 120, 65, 12, 12);
+
+                if (i == 0) g2d.setColor(new Color(255, 215, 0));       // Emas
+                else if (i == 1) g2d.setColor(new Color(192, 192, 192)); // Perak
+                else if (i == 2) g2d.setColor(new Color(205, 127, 50));  // Perunggu
+                else g2d.setColor(Color.WHITE);
+
+                g2d.setFont(new Font("SansSerif", Font.BOLD, 18));
+                g2d.drawString("#" + (i + 1), 80, cardY + 38);
+
+                g2d.setColor(Color.WHITE);
+                g2d.setFont(new Font("SansSerif", Font.BOLD, 16));
+                g2d.drawString(entry.getName(), 140, cardY + 38);
+
+                g2d.setColor(new Color(255, 215, 0));
+                g2d.setFont(new Font("SansSerif", Font.BOLD, 18));
+                String scoreStr = entry.getScore() + " Pts";
+                FontMetrics fm = g2d.getFontMetrics();
+                g2d.drawString(scoreStr, WIDTH - 80 - fm.stringWidth(scoreStr), cardY + 38);
+            }
+        }
+
+        g2d.setClip(oldClip);
     }
 
     private void drawPauseOverlay(Graphics2D g2d) {
@@ -766,7 +866,7 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
         } else {
             g2d.setColor(new Color(200, 200, 210));
             g2d.setFont(new Font("SansSerif", Font.PLAIN, 14));
-            drawCentered(g2d, "High Score: " + highScore.score + " (" + highScore.name + ")", HEIGHT / 2 + 20);
+            drawCentered(g2d, "High Score: " + topHighScore.getScore() + " (" + topHighScore.getName() + ")", HEIGHT / 2 + 20);
         }
     }
 

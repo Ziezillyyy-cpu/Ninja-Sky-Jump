@@ -86,7 +86,7 @@ public class Platform {
 
             // 1. Besarkan padding kanan Ninja agar ujung kanan fisiknya masuk lebih ke dalam ke badannya
             int ninjaPaddingKiri = 20;
-            int ninjaPaddingKanan = 45; // <-- DITAMBAH (pangkas area transparan sebelah kanan Ninja)
+            int ninjaPaddingKanan = 35; // <-- DITAMBAH (pangkas area transparan sebelah kanan Ninja)
 
             double ninjaLeftEdge = ninja.getX() + ninjaPaddingKiri;
             double ninjaRightEdge = ninja.getX() + ninja.getWidth() - ninjaPaddingKanan;
