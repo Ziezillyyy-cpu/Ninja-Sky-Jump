@@ -602,18 +602,18 @@ public class GamePanel extends JPanel implements ActionListener, KeyListener {
 
         g2d.setColor(new Color(245, 245, 245));
         g2d.setFont(new Font("Monospaced", Font.PLAIN, 11));
-        g2d.drawString("LinkedList Platform: " + activePlatforms.size() + " aktif", 22, 85);
-
-        String queuePreview = "Queue (FIFO): ";
-        if (!platformPatternQueue.isEmpty()) {
-            java.util.Iterator<String> it = platformPatternQueue.iterator();
-            queuePreview += "[" + it.next().substring(0, 4) + ", "
-                    + (it.hasNext() ? it.next().substring(0, 4) : "") + ", "
-                    + (it.hasNext() ? it.next().substring(0, 4) : "") + ", ...]";
-        } else {
-            queuePreview += "[]";
-        }
-        g2d.drawString(queuePreview, 22, 101);
+//        g2d.drawString("LinkedList Platform: " + activePlatforms.size() + " aktif", 22, 85);
+//
+//        String queuePreview = "Queue (FIFO): ";
+//        if (!platformPatternQueue.isEmpty()) {
+//            java.util.Iterator<String> it = platformPatternQueue.iterator();
+//            queuePreview += "[" + it.next().substring(0, 4) + ", "
+//                    + (it.hasNext() ? it.next().substring(0, 4) : "") + ", "
+//                    + (it.hasNext() ? it.next().substring(0, 4) : "") + ", ...]";
+//        } else {
+//            queuePreview += "[]";
+//        }
+//        g2d.drawString(queuePreview, 22, 101);
     }
 
     private void drawLives(Graphics2D g2d, int x, int y) {
